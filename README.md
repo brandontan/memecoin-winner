@@ -71,9 +71,9 @@ src/
 
 ## Subscription Tiers
 
-- **Basic** ($49/month): Real-time alerts for high-confidence opportunities
-- **Pro** ($99/month): Additional opportunities, detailed analytics, historical data
-- **Elite** ($199/month): Earlier detection, additional signals, private community
+- **Basic** (/month): Real-time alerts for high-confidence opportunities
+- **Pro** (/month): Additional opportunities, detailed analytics, historical data
+- **Elite** (/month): Earlier detection, additional signals, private community
 
 ## Development Roadmap
 
@@ -164,5 +164,3 @@ If you encounter connection issues:
 3. Ensure connection string is correct
 4. Check cluster status in Atlas dashboard
 5. Run `npm run test-atlas` for detailed diagnostics
-
-
