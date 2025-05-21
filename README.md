@@ -164,5 +164,8 @@ If you encounter connection issues:
 3. Ensure connection string is correct
 4. Check cluster status in Atlas dashboard
 5. Run `npm run test-atlas` for detailed diagnostics
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> origin/master
