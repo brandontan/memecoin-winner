@@ -1,0 +1,33 @@
+{
+  "name": "memecoin-predictor-mvp",
+  "version": "1.0.0",
+  "description": "MVP - Simple memecoin predictor for Pump.fun",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "jest",
+    "test:mongodb": "jest tests/01-mongodb-basic.test.js",
+    "test:simple": "node test.js"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.2",
+    "axios": "^1.6.7",
+    "dotenv": "^16.5.0",
+    "mongoose": "^8.1.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "jest": "^29.7.0",
+    "mongodb-memory-server": "^10.1.4"
+  },
+  "keywords": [
+    "solana",
+    "memecoin",
+    "pump.fun",
+    "crypto"
+  ],
+  "author": "",
+  "license": "ISC"
+}

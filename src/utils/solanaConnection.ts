@@ -1,5 +1,5 @@
 import { Connection, ConnectionConfig, PublicKey, GetTransactionConfig } from '@solana/web3.js';
-import { logger } from './logger';
+import logger from './logger';
 import { config } from '../config/config';
 
 class SolanaConnection {

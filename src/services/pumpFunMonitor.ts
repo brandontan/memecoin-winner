@@ -30,12 +30,24 @@ class PumpFunMonitor {
   private monitoringInterval: NodeJS.Timeout | null = null;
   private trackingInterval: NodeJS.Timeout | null = null;
   private pollingInterval: number = 1000; // Default polling interval
+  private lastBlockTime: Date = new Date(0);
 
   constructor() {
     this.connection = new Connection(config.solana.rpcEndpoint);
     this.processedSignatures = new Set();
     this.isRunning = false;
     this.lastProcessedSlot = 0;
+  }
+
+  private async initializeLastProcessedSlot(): Promise<void> {
+    try {
+      const slot = await this.connection.getSlot();
+      this.lastProcessedSlot = slot - 100; // Look at last 100 slots initially
+      logger.info(`Initialized last processed slot: ${this.lastProcessedSlot}`);
+    } catch (error) {
+      logger.error('Error initializing last processed slot:', error);
+      throw error;
+    }
   }
 
   async startOnce(): Promise<void> {
@@ -48,6 +60,31 @@ class PumpFunMonitor {
       logger.error('Error in startOnce:', error);
       return Promise.reject(error);
     }
+  }
+
+  async initializeMonitoring(): Promise<void> {
+    if (this.isRunning) {
+      logger.info('Monitoring already running');
+      return;
+    }
+
+    this.isRunning = true;
+    logger.info('Starting Pump.fun monitoring...');
+
+    // Initial setup
+    await this.initializeLastProcessedSlot();
+
+    // Start monitoring for new tokens
+    this.monitoringInterval = setInterval(
+      () => this.detectNewTokens().catch(logger.error),
+      this.pollingInterval
+    );
+
+    // Start updating tracked tokens
+    this.trackingInterval = setInterval(
+      () => this.updateTrackedTokens().catch(logger.error),
+      30000 // Update every 30 seconds
+    );
   }
 
   start(options: { continuous?: boolean } = { continuous: true }): void {
@@ -386,15 +423,19 @@ class PumpFunMonitor {
   async updateTokenMetrics(mintAddress: string): Promise<void> {
     try {
       const token = await Token.findOne({ mintAddress });
-      if (!token) {
-        return;
-      }
+      if (!token) return;
 
-      // Get token volume
       const volume = await this.getTokenVolume(mintAddress);
       
       // Update token metrics
-      token.currentVolume = volume;
+      token.metrics = token.metrics || {};
+      token.metrics.currentVolume = volume;
+      
+      // Initialize volumeHistory if it doesn't exist
+      if (!token.volumeHistory) {
+        token.volumeHistory = [];
+      }
+      
       token.volumeHistory.push({
         timestamp: new Date(),
         value: volume
@@ -403,7 +444,7 @@ class PumpFunMonitor {
       // Calculate volume growth rate
       if (token.volumeHistory.length > 1) {
         const prevVolume = token.volumeHistory[token.volumeHistory.length - 2].value;
-        token.volumeGrowthRate = prevVolume > 0 ? (volume - prevVolume) / prevVolume : 0;
+        token.metrics.volumeGrowthRate = prevVolume > 0 ? (volume - prevVolume) / prevVolume : 0;
       }
 
       // Check for graduation
@@ -413,7 +454,8 @@ class PumpFunMonitor {
         logger.info(`Token ${mintAddress} has graduated!`);
       }
 
-      token.lastUpdated = new Date();
+      // Update last updated timestamp
+      token.updatedAt = new Date();
       await token.save();
     } catch (error) {
       logger.error(`Error updating metrics for token ${mintAddress}:`, error);
@@ -450,7 +492,7 @@ class PumpFunMonitor {
       }
     } catch (error) {
       logger.error('Error detecting new tokens:', error);
-      throw error; // Propagate error for test handling
+      throw error;
     }
   }
 
@@ -480,41 +522,32 @@ class PumpFunMonitor {
       const token = await Token.findOne({ mintAddress });
       if (!token) return;
 
-      const patterns: string[] = [];
-
-      // Check volume growth pattern
-      if (token.volumeHistory.length >= 2) {
-        const recentVolumes = token.volumeHistory.slice(-5);
-        const oldestVolume = recentVolumes[0].value;
-        const newestVolume = recentVolumes[recentVolumes.length - 1].value;
-
-        if (oldestVolume > 0) {
-          const growthRate = (newestVolume - oldestVolume) / oldestVolume;
-          if (growthRate > 0.5) {
-            patterns.push('volume_increase');
+      // Initialize arrays if they don't exist
+      token.detectedPatterns = token.detectedPatterns || [];
+      token.volumeHistory = token.volumeHistory || [];
+      token.holderHistory = token.holderHistory || [];
+      
+      // Check for volume spikes (need at least 3 data points)
+      if (token.volumeHistory.length >= 3) {
+        const volumes = token.volumeHistory.slice(-3).map(v => v.value);
+        if (volumes[2] > volumes[1] * 5 && volumes[1] > volumes[0] * 5) {
+          if (!token.detectedPatterns.includes('volume_spike')) {
+            token.detectedPatterns.push('volume_spike');
           }
         }
       }
 
-      // Check holder growth pattern
-      if (token.holderHistory.length >= 2) {
-        const recentHolders = token.holderHistory.slice(-5);
-        const oldestHolders = recentHolders[0].value;
-        const newestHolders = recentHolders[recentHolders.length - 1].value;
-
-        if (oldestHolders > 0) {
-          const growthRate = (newestHolders - oldestHolders) / oldestHolders;
-          if (growthRate > 0.2) {
-            patterns.push('holder_growth');
+      // Check for holder growth (need at least 3 data points)
+      if (token.holderHistory.length >= 3) {
+        const holders = token.holderHistory.slice(-3).map(h => h.count);
+        if (holders[2] > holders[1] * 1.5 && holders[1] > holders[0] * 1.5) {
+          if (!token.detectedPatterns.includes('holder_growth')) {
+            token.detectedPatterns.push('holder_growth');
           }
         }
       }
 
-      if (patterns.length > 0) {
-        token.detectedPatterns = patterns;
-        await token.save();
-        logger.info(`Detected patterns for ${mintAddress}: ${patterns.join(', ')}`);
-      }
+      await token.save();
     } catch (error) {
       logger.error(`Error detecting patterns for token ${mintAddress}:`, error);
     }
@@ -534,4 +567,8 @@ class PumpFunMonitor {
   }
 }
 
-export default PumpFunMonitor; 
+// Create a singleton instance
+const pumpFunMonitor = new PumpFunMonitor();
+
+export { pumpFunMonitor };
+export default pumpFunMonitor; 

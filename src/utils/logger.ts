@@ -24,12 +24,14 @@ const loggerInstance = winston.createLogger({
     ],
 });
 
-// Export the logger instance directly
+// Export the logger instance as default
 export default loggerInstance;
 
-// Export the stream for Morgan
-export const stream = {
+// Named export for the stream
+const stream = {
     write: (message: string) => {
         loggerInstance.info(message.trim());
     },
-}; 
+};
+
+export { stream }; 

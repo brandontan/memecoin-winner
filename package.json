@@ -54,6 +54,7 @@
     "@types/jest": "^29.5.14",
     "@types/mongoose": "^5.11.96",
     "@types/node": "^20.17.47",
+    "@types/node-cron": "^3.0.11",
     "@types/react": "^19.1.4",
     "@types/react-dom": "^19.1.5",
     "@types/winston": "^2.4.4",

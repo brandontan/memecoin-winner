@@ -1,9 +1,11 @@
 import express, { Request, Response, NextFunction, Application } from 'express';
 import { Server } from 'http';
 import { config } from './config/config';
-import { logger } from './utils/logger';
-import { mongodb } from './config/mongodb';
+import logger from './utils/logger';
+import mongoose from 'mongoose';
 import tokenRoutes from './routes/tokenRoutes';
+import trackingRoutes from './routes/trackingRoutes';
+import trackingService from './services/trackingService';
 import { pumpFunMonitor } from './services/pumpFunMonitor';
 
 // Initialize Express app
@@ -14,7 +16,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use('/api', tokenRoutes);
+app.use('/api/tokens', tokenRoutes);
+app.use('/api/tracking', trackingRoutes);
 
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
@@ -36,8 +39,12 @@ let server: Server;
 const startServer = async (): Promise<void> => {
     try {
         // Connect to MongoDB
-        await mongodb.connect();
+        await mongoose.connect(config.database.mongodb.uri, config.database.mongodb.options);
         logger.info('Connected to MongoDB');
+
+        // Initialize tracking service
+        await trackingService.initialize();
+        logger.info('Tracking service initialized');
 
         // Start monitoring service
         await pumpFunMonitor.initializeMonitoring();
@@ -47,6 +54,7 @@ const startServer = async (): Promise<void> => {
         server = app.listen(config.server.port, () => {
             logger.info(`Server is running on port ${config.server.port}`);
             logger.info(`Environment: ${config.server.nodeEnv}`);
+            logger.info('CoinTracker 24-hour tracking system is active');
         });
     } catch (error) {
         logger.error('Failed to start server:', error);
@@ -59,9 +67,15 @@ const shutdown = async (): Promise<void> => {
     logger.info('Shutting down gracefully...');
     
     try {
+        // Perform final maintenance
+        await trackingService.performMaintenance();
+        logger.info('Final tracking maintenance completed');
+
         // Stop monitoring service
-        pumpFunMonitor.stop();
-        logger.info('Monitoring service stopped');
+        if (pumpFunMonitor.stop) {
+            pumpFunMonitor.stop();
+            logger.info('Monitoring service stopped');
+        }
 
         // Close server
         if (server) {
@@ -75,7 +89,7 @@ const shutdown = async (): Promise<void> => {
         }
 
         // Close database connection
-        await mongodb.mongoose.connection.close();
+        await mongoose.connection.close();
         logger.info('Database connection closed');
 
         process.exit(0);

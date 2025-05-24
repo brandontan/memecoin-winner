@@ -54,7 +54,7 @@ const runTest = async () => {
     // Test 2: Update time series data
     logger.info('Test 2: Updating time series data...');
     const updatedToken = await createdToken.updateTimeSeriesData('volume', 2000);
-    logger.info('Token updated with new volume:', updatedToken.currentVolume);
+    logger.info('Token updated with new volume:', updatedToken.metrics.currentVolume);
     logger.debug('Updated token details:', updatedToken.toObject());
 
     // Test 3: Add pattern
@@ -80,7 +80,8 @@ const runTest = async () => {
     logger.info('Found near graduation tokens:', nearGraduationTokens.length);
     logger.debug('Near graduation tokens:', nearGraduationTokens.map(t => ({
       mintAddress: t.mintAddress,
-      currentVolume: t.currentVolume
+      volume24h: t.metrics.volume24h,
+      currentVolume: t.metrics.currentVolume
     })));
 
     // Test 6: Find top potential tokens

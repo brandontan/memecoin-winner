@@ -222,17 +222,38 @@ describe('MongoDB Connection Tests', () => {
     });
 
     test('should handle validation errors', async () => {
+      // Create a valid token first
+      const validToken = {
+        mintAddress: 'test_mint_' + Date.now(),
+        name: 'Test Token',
+        symbol: 'TEST',
+        creator: 'test_creator',
+        currentPrice: 0.1,
+        currentVolume: 1000,
+        holderCount: 10,
+        liquidityAmount: 10000
+      };
+
+      // This should pass validation
+      const token = await Token.create(validToken);
+      expect(token).toBeDefined();
+      
+      // Try to create an invalid token (missing required fields)
       try {
         await Token.create({
-          mintAddress: 'test_mint_' + Date.now(),
-          name: 'Test Token',
-          symbol: 'TEST'
+          // Missing required fields
+          mintAddress: 'test_mint_invalid_' + Date.now()
         });
         fail('Should have thrown a validation error');
-      } catch (error) {
+      } catch (error: any) {
         expect(error).toBeDefined();
-        expect((error as any).name).toBe('ValidationError');
-        logger.info('MongoDB validation error handling test passed');
+        // Check if it's a validation error
+        if (error.name === 'ValidationError') {
+          logger.info('MongoDB validation error handling test passed');
+          return;
+        }
+        // If we get here, it's not the error we expected
+        throw error;
       }
     });
   });

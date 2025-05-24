@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import Token, { IToken } from '../models/token';
+import Token, { ITokenDocument } from '../models/token';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
 describe('Token Model', () => {
@@ -249,7 +249,7 @@ describe('Token Model', () => {
       await token.updateTimeSeriesData('volume', 200);
       const updated = await Token.findOne({ mintAddress: 'mint8' });
       expect(updated?.volumeHistory.length).toBe(2);
-      expect(updated?.volumeHistory[1].value).toBe(200);
+      expect(updated?.volumeHistory[1].volume).toBe(200);
     });
 
     it('should add price data points', async () => {
@@ -277,7 +277,7 @@ describe('Token Model', () => {
       await token.updateTimeSeriesData('price', 2.34);
       const updated = await Token.findOne({ mintAddress: 'mint9' });
       expect(updated?.priceHistory.length).toBe(2);
-      expect(updated?.priceHistory[1].value).toBe(2.34);
+      expect(updated?.priceHistory[1].price).toBe(2.34);
     });
 
     it('should add holder count data points', async () => {
@@ -303,15 +303,21 @@ describe('Token Model', () => {
       });
       await Token.findOneAndUpdate(
         { mintAddress: 'mint10' },
-        { $push: { holderHistory: { timestamp: new Date(), value: 5 } } }
+        { $push: { holderHistory: { timestamp: new Date(), count: 5 } } }
       );
       await Token.findOneAndUpdate(
         { mintAddress: 'mint10' },
-        { $push: { holderHistory: { timestamp: new Date(), value: 10 } } }
+        { $push: { holderHistory: { timestamp: new Date(), count: 10 } } }
       );
       const updated = await Token.findOne({ mintAddress: 'mint10' });
+      // Debug logging
+      console.log('Updated token:', JSON.stringify(updated, null, 2));
+      console.log('Holder history:', JSON.stringify(updated?.holderHistory, null, 2));
+      console.log('Holder history length:', updated?.holderHistory?.length);
+      console.log('Second item:', updated?.holderHistory?.[1]);
+      
       expect(updated?.holderHistory.length).toBe(2);
-      expect(updated?.holderHistory[1].value).toBe(10);
+      expect(updated?.holderHistory[1].count).toBe(10);
     });
   });
 
@@ -324,14 +330,9 @@ describe('Token Model', () => {
         symbol: 'TK11',
         createdAt: new Date(),
         creator: 'creator11',
-        currentVolume: 60000,
+        currentVolume: 50000,
         currentPrice: 1.0,
-        holderCount: 10,
-        liquidityAmount: 100,
-        volumeHistory: [],
-        priceHistory: [],
-        holderHistory: [],
-        potentialScore: 10,
+        potentialScore: 85,
         volumeGrowthRate: 0.1,
         isGraduated: false,
         isActive: true,
@@ -340,8 +341,8 @@ describe('Token Model', () => {
       });
       const nearGrad = await Token.findNearGraduation();
       expect(nearGrad.length).toBeGreaterThan(0);
-      expect(nearGrad[0].currentVolume).toBeGreaterThanOrEqual(50000);
-      expect(nearGrad[0].currentVolume).toBeLessThan(69000);
+      expect(nearGrad[0].potentialScore).toBeGreaterThanOrEqual(80);
+      expect(nearGrad[0].isGraduated).toBe(false);
     });
 
     it('should find tokens with high potential scores', async () => {
