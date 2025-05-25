@@ -438,12 +438,12 @@ class PumpFunMonitor {
       
       token.volumeHistory.push({
         timestamp: new Date(),
-        value: volume
+        volume
       });
 
       // Calculate volume growth rate
       if (token.volumeHistory.length > 1) {
-        const prevVolume = token.volumeHistory[token.volumeHistory.length - 2].value;
+        const prevVolume = token.volumeHistory[token.volumeHistory.length - 2].volume;
         token.metrics.volumeGrowthRate = prevVolume > 0 ? (volume - prevVolume) / prevVolume : 0;
       }
 
@@ -529,7 +529,7 @@ class PumpFunMonitor {
       
       // Check for volume spikes (need at least 3 data points)
       if (token.volumeHistory.length >= 3) {
-        const volumes = token.volumeHistory.slice(-3).map(v => v.value);
+        const volumes = token.volumeHistory.slice(-3).map(v => v.volume);
         if (volumes[2] > volumes[1] * 5 && volumes[1] > volumes[0] * 5) {
           if (!token.detectedPatterns.includes('volume_spike')) {
             token.detectedPatterns.push('volume_spike');

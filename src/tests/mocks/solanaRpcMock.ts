@@ -96,8 +96,7 @@ export class MockSolanaConnection extends Connection {
       const commitment = typeof commitmentOrConfig === 'string' 
         ? commitmentOrConfig 
         : commitmentOrConfig?.commitment || 'finalized';
-      const key = this.getMockKey('getParsedTransaction', [signature, commitment]);
-      MockSolanaConnection.logDebug('Retrieving mock response for key:', key);
+      const key = this.getMockKey('getParsedTransaction', [signature, { commitment }]);
       const response = MockSolanaConnection.responses.get(key);
       if (response) {
         return response;

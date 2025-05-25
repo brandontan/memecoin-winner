@@ -18,16 +18,45 @@ describe('Solana Connection Tests', () => {
 
     it('should handle successful transaction parsing', async () => {
       const signature = 'test_signature';
-      const mockTx = {
+      const fullRealisticMockTx = {
         slot: 1,
-        blockTime: 1,
+        blockTime: Math.floor(Date.now() / 1000),
         transaction: {
           message: {
-            accountKeys: [],
-            instructions: []
-          }
+            header: {
+              numRequiredSignatures: 1,
+              numReadonlySignedAccounts: 0,
+              numReadonlyUnsignedAccounts: 4
+            },
+            accountKeys: [
+              { pubkey: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', signer: true, writable: true, source: 'transaction' },
+              { pubkey: 'So11111111111111111111111111111111111111112', signer: false, writable: true, source: 'transaction' },
+              { pubkey: '11111111111111111111111111111111', signer: false, writable: false, source: 'transaction' },
+              { pubkey: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', signer: false, writable: false, source: 'transaction' }
+            ],
+            recentBlockhash: 'EePxq6qUQKqhB8kPLx6aE7rT1h5HgFJcQ2Jz6X6X6X6X',
+            instructions: [{
+              programIdIndex: 3,
+              accounts: [0, 1, 2],
+              data: 'base58encodeddata'
+            }]
+          },
+          signatures: ['mockSignatureHash123']
         },
-        meta: { err: null }
+        meta: {
+          err: null,
+          fee: 5000,
+          preBalances: [1000000000, 0, 1000000000, 1000000000],
+          postBalances: [995000000, 0, 1000000000, 1000000000],
+          innerInstructions: [],
+          logMessages: [
+            'Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA invoke [1]',
+            'Program log: Instruction: InitializeMint',
+            'Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA success'
+          ],
+          preTokenBalances: [],
+          postTokenBalances: []
+        }
       };
 
       const commitment = 'finalized';
@@ -39,14 +68,16 @@ describe('Solana Connection Tests', () => {
         commitment
       });
       
-      MockSolanaConnection.recordResponse('getParsedTransaction', [signature, { commitment }], mockTx);
+      // Set the mock response directly using the same key format as getMockKey
+      const key = `getParsedTransaction_${JSON.stringify([signature, { commitment }])}`;
+      MockSolanaConnection.responses.set(key, fullRealisticMockTx);
       
       // Debug logging
       console.log('Retrieving mock response...');
       const result = await mockConnection.getParsedTransaction(signature, { commitment });
       console.log('Received result:', result);
       
-      expect(result).toEqual(mockTx);
+      expect(result).toEqual(fullRealisticMockTx);
     });
 
     it('should handle rate limiting', async () => {

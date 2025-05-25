@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memecoin Predictor - Clean Table</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-text: #0b0e23;
+            --color-text-secondary: #76808f;
+            --color-border: #eaecef;
+            --color-bg: #ffffff;
+            --color-row-hover: #f8f9fa;
+            --color-success: #16c784;
+            --color-warning: #f0b90b;
+            --color-danger: #ea3943;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f8fafd;
+            color: var(--color-text);
+            line-height: 1.5;
+            padding: 20px;
+        }
+
+        .table-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            overflow: hidden;
+            border: 1px solid var(--color-border);
+        }
+
+        .tokens-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .tokens-table th {
+            font-weight: 500;
+            color: var(--color-text-secondary);
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            text-align: left;
+            padding: 16px;
+            background-color: #f8fafd;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .tokens-table td {
+            padding: 16px;
+            border-bottom: 1px solid var(--color-border);
+            vertical-align: middle;
+        }
+
+        .tokens-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .tokens-table tbody tr:hover {
+            background-color: var(--color-row-hover);
+        }
+
+        .token-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .token-name {
+            font-weight: 500;
+        }
+
+        .token-symbol {
+            color: var(--color-text-secondary);
+            font-size: 13px;
+        }
+
+        .score {
+            font-weight: 500;
+        }
+
+        .score-high { color: var(--color-success); }
+        .score-medium { color: var(--color-warning); }
+        .score-low { color: var(--color-danger); }
+
+        .loading {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--color-text-secondary);
+        }
+
+        @media (max-width: 768px) {
+            .table-container {
+                border-radius: 0;
+                border-left: none;
+                border-right: none;
+            }
+            
+            body {
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="table-container">
+        <table class="tokens-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Token</th>
+                    <th>Score</th>
+                    <th>Price</th>
+                    <th>Volume (24h)</th>
+                    <th>Holders</th>
+                    <th>Age</th>
+                </tr>
+            </thead>
+            <tbody id="tokens-container">
+                <tr>
+                    <td colspan="7" class="loading">
+                        Loading token data...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Format number with commas
+        function formatNumber(num) {
+            if (num === null || num === undefined) return '0';
+            return num.toLocaleString('en-US');
+        }
+
+        // Format price with appropriate decimal places
+        function formatPrice(price) {
+            if (price === null || price === undefined) return '$0.00';
+            if (price < 0.0001) return `$${price.toExponential(4)}`;
+            if (price < 1) return `$${price.toFixed(6).replace(/\.?0+$/, '')}`;
+            return `$${price.toFixed(4).replace(/\.?0+$/, '')}`;
+        }
+
+        // Format volume with appropriate units
+        function formatVolume(volume) {
+            if (!volume) return '$0';
+            if (volume >= 1000000) return `$${(volume / 1000000).toFixed(2)}M`;
+            if (volume >= 1000) return `$${(volume / 1000).toFixed(2)}K`;
+            return `$${volume.toFixed(2)}`;
+        }
+
+        // Format date to relative time
+        function timeAgo(dateString) {
+            if (!dateString) return 'N/A';
+            
+            const date = new Date(dateString);
+            const seconds = Math.floor((new Date() - date) / 1000);
+            
+            let interval = Math.floor(seconds / 31536000);
+            if (interval >= 1) return `${interval}y`;
+            
+            interval = Math.floor(seconds / 2592000);
+            if (interval >= 1) return `${interval}mo`;
+            
+            interval = Math.floor(seconds / 86400);
+            if (interval >= 1) return `${interval}d`;
+            
+            interval = Math.floor(seconds / 3600);
+            if (interval >= 1) return `${interval}h`;
+            
+            interval = Math.floor(seconds / 60);
+            if (interval >= 1) return `${interval}m`;
+            
+            return 'just now';
+        }
+
+        // Get score class based on value
+        function getScoreClass(score) {
+            if (score >= 80) return 'score-high';
+            if (score >= 60) return 'score-medium';
+            return 'score-low';
+        }
+
+        // Fetch token data from API
+        async function fetchTokenData() {
+            try {
+                const response = await fetch('http://localhost:3000/api/tokens/latest');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch token data');
+                }
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.data && data.data.length > 0) {
+                    updateUI(data.data);
+                } else {
+                    throw new Error('No token data available');
+                }
+            } catch (error) {
+                console.error('Error fetching token data:', error);
+                const container = document.getElementById('tokens-container');
+                container.innerHTML = `
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 2rem; color: var(--color-danger);">
+                            Error loading token data. Please try again later.
+                        </td>
+                    </tr>`;
+            }
+        }
+
+        // Update the UI with token data
+        function updateUI(tokens) {
+            const container = document.getElementById('tokens-container');
+            
+            if (!tokens || tokens.length === 0) {
+                container.innerHTML = `
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">
+                            No tokens found
+                        </td>
+                    </tr>`;
+                return;
+            }
+            
+            // Sort tokens by score (highest first)
+            tokens.sort((a, b) => (b.potentialScore || 0) - (a.potentialScore || 0));
+            
+            // Generate table rows
+            const rows = tokens.map((token, index) => {
+                const score = token.potentialScore || 0;
+                const scoreClass = getScoreClass(score);
+                const formattedScore = Math.round(score);
+                
+                return `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>
+                            <div class="token-info">
+                                <span class="token-name">${token.name || 'Unnamed Token'}</span>
+                                ${token.symbol ? `<span class="token-symbol">${token.symbol}</span>` : ''}
+                            </div>
+                        </td>
+                        <td class="score ${scoreClass}">${formattedScore}</td>
+                        <td>${formatPrice(token.currentPrice)}</td>
+                        <td>${formatVolume(token.volume24h || 0)}</td>
+                        <td>${formatNumber(token.holderCount || 0)}</td>
+                        <td>${timeAgo(token.createdAt)}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            container.innerHTML = rows;
+        }
+
+        // Initial data fetch
+        fetchTokenData();
+        
+        // Refresh data every 30 seconds
+        setInterval(fetchTokenData, 30000);
+    </script>
+</body>
+</html>

@@ -8,7 +8,7 @@ console.log('DEBUG config.ts loaded');
 
 const config: Config = {
     server: {
-        port: parseInt(process.env.PORT || '3000', 10),
+        port: parseInt(process.env.PORT || '3001', 10),
         nodeEnv: process.env.NODE_ENV || 'development',
     },
     
@@ -47,6 +47,12 @@ const config: Config = {
         pumpFun: {
             graduationThreshold: parseInt(process.env.PUMP_FUN_GRADUATION_THRESHOLD || '1000000', 10)
         }
+    },
+    
+    monitoring: {
+        maxRetries: parseInt(process.env.MONITORING_MAX_RETRIES || '5', 10),
+        retryDelay: parseInt(process.env.MONITORING_RETRY_DELAY || '5000', 10),
+        pollingInterval: parseInt(process.env.MONITORING_POLLING_INTERVAL || '10000', 10)
     }
 };
 

@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memecoin Predictor - Professional Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        :root {
+            --color-bg: #f8fafd;
+            --color-card: #ffffff;
+            --color-text: #0b0e23;
+            --color-text-secondary: #76808f;
+            --color-border: #eaecef;
+            --color-success: #16c784;
+            --color-warning: #f0b90b;
+            --color-danger: #ea3943;
+            --color-primary: #3861fb;
+            --color-hover: #f8f9fa;
+            --color-header: #f8fafd;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --color-bg: #17171a;
+                --color-card: #1e2026;
+                --color-text: #f8fafc;
+                --color-text-secondary: #a7b1bc;
+                --color-border: #2b3139;
+                --color-header: #1e2026;
+                --color-hover: #2b2f36;
+            }
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            padding: 0 1rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1rem 0;
+        }
+
+        header {
+            padding: 1.5rem 0;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .last-updated {
+            color: var(--color-text-secondary);
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tokens-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+            background: var(--color-card);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .tokens-table th,
+        .tokens-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .tokens-table th {
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background-color: var(--color-header);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .tokens-table tbody tr {
+            transition: background-color 0.2s;
+        }
+
+        .tokens-table tbody tr:hover {
+            background-color: var(--color-hover);
+            cursor: pointer;
+        }
+
+        .token-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .token-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3861fb, #6c5ce7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .token-name {
+            font-weight: 600;
+        }
+
+        .token-symbol {
+            color: var(--color-text-secondary);
+            font-size: 0.85em;
+            margin-left: 0.5rem;
+        }
+
+        .score-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-weight: 500;
+            font-size: 0.85rem;
+            text-align: center;
+            min-width: 50px;
+        }
+
+        .score-high { background-color: rgba(22, 199, 132, 0.1); color: var(--color-success); }
+        .score-medium { background-color: rgba(240, 185, 11, 0.1); color: var(--color-warning); }
+        .score-low { background-color: rgba(234, 57, 67, 0.1); color: var(--color-danger); }
+
+        .loading {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--color-text-secondary);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 2rem;
+            height: 2rem;
+            border: 3px solid rgba(56, 97, 251, 0.2);
+            border-radius: 50%;
+            border-top-color: var(--color-primary);
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 768px) {
+            .tokens-table { display: block; overflow-x: auto; }
+            .tokens-table th, .tokens-table td { padding: 0.75rem 0.5rem; }
+            .header-content { flex-direction: column; align-items: flex-start; gap: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <h1><i class="fas fa-chart-line"></i> Memecoin Predictor</h1>
+                <div class="last-updated">
+                    <i class="fas fa-sync-alt"></i>
+                    <span>Updated: <span id="last-updated">Just now</span></span>
+                </div>
+            </div>
+        </header>
+        
+        <div class="table-container">
+            <table class="tokens-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Score</th>
+                        <th>Price</th>
+                        <th>Volume (24h)</th>
+                        <th>Holders</th>
+                        <th>Launched</th>
+                    </tr>
+                </thead>
+                <tbody id="tokens-container">
+                    <tr>
+                        <td colspan="7" class="loading">
+                            <div class="loading-spinner"></div>
+                            <div>Loading token data...</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Format number with commas
+        function formatNumber(num) {
+            if (num === null || num === undefined) return '0';
+            return num.toLocaleString('en-US');
+        }
+
+        // Format price with appropriate decimal places
+        function formatPrice(price) {
+            if (price === null || price === undefined) return '$0.00';
+            if (price < 0.0001) return `$${price.toExponential(4)}`;
+            if (price < 1) return `$${price.toFixed(6).replace(/\.?0+$/, '')}`;
+            return `$${price.toFixed(4).replace(/\.?0+$/, '')}`;
+        }
+
+
+        // Format volume with appropriate units
+        function formatVolume(volume) {
+            if (!volume) return '$0';
+            if (volume >= 1000000) return `$${(volume / 1000000).toFixed(1)}M`;
+            if (volume >= 1000) return `$${(volume / 1000).toFixed(1)}K`;
+            return `$${volume.toFixed(2)}`;
+        }
+
+        // Format date to relative time
+        function timeAgo(dateString) {
+            if (!dateString) return 'N/A';
+            
+            const date = new Date(dateString);
+            const seconds = Math.floor((new Date() - date) / 1000);
+            
+            let interval = Math.floor(seconds / 31536000);
+            if (interval >= 1) return `${interval}y`;
+            
+            interval = Math.floor(seconds / 2592000);
+            if (interval >= 1) return `${interval}mo`;
+            
+            interval = Math.floor(seconds / 86400);
+            if (interval >= 1) return `${interval}d`;
+            
+            interval = Math.floor(seconds / 3600);
+            if (interval >= 1) return `${interval}h`;
+            
+            interval = Math.floor(seconds / 60);
+            if (interval >= 1) return `${interval}m`;
+            
+            return 'just now';
+        }
+
+        // Get score class based on value
+        function getScoreClass(score) {
+            if (score >= 80) return 'score-high';
+            if (score >= 60) return 'score-medium';
+            return 'score-low';
+        }
+
+        // Get first letter for token icon
+        function getTokenIconLetter(name) {
+            if (!name) return '?';
+            return name.charAt(0).toUpperCase();
+        }
+
+        // Fetch token data from API
+        async function fetchTokenData() {
+            try {
+                const response = await fetch('http://localhost:3000/api/tokens/latest');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch token data');
+                }
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.data && data.data.length > 0) {
+                    updateUI(data.data);
+                } else {
+                    throw new Error('No token data available');
+                }
+                
+                // Update last updated time
+                const now = new Date();
+                const timeString = now.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                });
+                document.getElementById('last-updated').textContent = timeString;
+            } catch (error) {
+                console.error('Error fetching token data:', error);
+                const container = document.getElementById('tokens-container');
+                container.innerHTML = `
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: var(--color-danger); padding: 2rem;">
+                            Error loading token data. Please try again later.
+                            <div style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--color-text-secondary);">
+                                ${error.message}
+                            </div>
+                        </td>
+                    </tr>`;
+            }
+        }
+
+        // Update the UI with token data
+        function updateUI(tokens) {
+            const container = document.getElementById('tokens-container');
+            
+            if (!tokens || tokens.length === 0) {
+                container.innerHTML = `
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">
+                            No tokens found
+                        </td>
+                    </tr>`;
+                return;
+            }
+            
+            // Sort tokens by score (highest first)
+            tokens.sort((a, b) => (b.potentialScore || 0) - (a.potentialScore || 0));
+            
+            // Generate table rows
+            const rows = tokens.map((token, index) => {
+                const score = token.potentialScore || 0;
+                const scoreClass = getScoreClass(score);
+                const formattedScore = score.toFixed(1);
+                
+                return `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>
+                            <div class="token-info">
+                                <div class="token-icon">${getTokenIconLetter(token.name || token.symbol)}</div>
+                                <div>
+                                    <span class="token-name">${token.name || 'Unnamed Token'}</span>
+                                    <span class="token-symbol">${token.symbol ? `(${token.symbol})` : ''}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="score-badge ${scoreClass}">${formattedScore}</span></td>
+                        <td>${formatPrice(token.currentPrice)}</td>
+                        <td>${formatVolume(token.volume24h || 0)}</td>
+                        <td>${formatNumber(token.holderCount || 0)}</td>
+                        <td>${timeAgo(token.createdAt)}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            container.innerHTML = rows;
+        }
+
+        // Initial data fetch
+        fetchTokenData();
+        
+        // Refresh data every 30 seconds
+        setInterval(fetchTokenData, 30000);
+        
+        // Add click handler for manual refresh
+        document.querySelector('.fa-sync-alt').addEventListener('click', fetchTokenData);
+    </script>
+</body>
+</html>

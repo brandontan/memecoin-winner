@@ -29,9 +29,16 @@ export interface LaunchpadsConfig {
     pumpFun: PumpFunConfig;
 }
 
+export interface MonitoringConfig {
+    maxRetries: number;
+    retryDelay: number;
+    pollingInterval: number;
+}
+
 export interface Config {
     server: ServerConfig;
     database: DatabaseConfig;
     solana: SolanaConfig;
     launchpads: LaunchpadsConfig;
+    monitoring: MonitoringConfig;
 } 
