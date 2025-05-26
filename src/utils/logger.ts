@@ -1,37 +1,19 @@
-import winston from 'winston';
+// Simple console logger implementation
+type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 
-// Create a default logger instance
-const loggerInstance = winston.createLogger({
-    level: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
-    format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-    ),
-    transports: [
-        new winston.transports.Console({
-            format: winston.format.combine(
-                winston.format.colorize(),
-                winston.format.simple()
-            ),
-        }),
-        new winston.transports.File({ 
-            filename: 'logs/error.log', 
-            level: 'error' 
-        }),
-        new winston.transports.File({ 
-            filename: 'logs/combined.log' 
-        }),
-    ],
-});
-
-// Export the logger instance as default
-export default loggerInstance;
-
-// Named export for the stream
-const stream = {
-    write: (message: string) => {
-        loggerInstance.info(message.trim());
-    },
+const logger = {
+  error: (message: string, ...meta: any[]) => console.error(`[ERROR] ${message}`, ...meta),
+  warn: (message: string, ...meta: any[]) => console.warn(`[WARN]  ${message}`, ...meta),
+  info: (message: string, ...meta: any[]) => console.log(`[INFO]  ${message}`, ...meta),
+  debug: (message: string, ...meta: any[]) => 
+    process.env.NODE_ENV === 'development' && console.debug(`[DEBUG] ${message}`, ...meta),
 };
 
-export { stream }; 
+// For compatibility with existing code
+export const stream = {
+  write: (message: string) => {
+    logger.info(message.trim());
+  }
+};
+
+export { logger as default, logger as loggerInstance };

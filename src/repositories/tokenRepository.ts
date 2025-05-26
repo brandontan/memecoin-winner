@@ -1,6 +1,8 @@
 import Token from '../models/token';
 import { FilterQuery, UpdateQuery } from 'mongoose';
+import { Connection } from '@solana/web3.js';
 import logger from '../utils/logger';
+import { calculateMarketCap, updateTokenWithMarketCap } from '../utils/marketCap';
 
 type ITokenDocument = InstanceType<typeof Token>;
 type ITokenModel = typeof Token;
@@ -33,9 +35,25 @@ class TokenRepository implements ITokenRepository {
     this.model = Token as unknown as ITokenModel;
   }
 
-  async createToken(tokenData: Partial<ITokenDocument>): Promise<ITokenDocument> {
+  async createToken(tokenData: Partial<ITokenDocument>, solanaConnection?: Connection): Promise<ITokenDocument> {
     try {
-      const token = new this.model(tokenData);
+      let token = new this.model(tokenData);
+      
+      // If we have a Solana connection and token price, calculate market cap
+      if (solanaConnection && tokenData.currentPrice) {
+        try {
+          const marketCapData = await calculateMarketCap(
+            solanaConnection,
+            token.mintAddress,
+            token.currentPrice
+          );
+          token = updateTokenWithMarketCap(token, marketCapData);
+        } catch (error) {
+          logger.error(`Error calculating market cap for ${token.mintAddress}:`, error);
+          // Continue without market cap data if there's an error
+        }
+      }
+      
       const savedToken = await token.save();
       logger.info(`Token created: ${savedToken.mintAddress}`);
       return savedToken;

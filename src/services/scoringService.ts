@@ -1,87 +1,204 @@
-import { Token, TokenStatus } from '../models/token';
+import Token from '../models/token';
 import logger from '../utils/logger';
 
 export class ScoringService {
-  // Weights for different factors in the score (0-1)
-  private static readonly WEIGHTS = {
-    volume: 0.4,
-    holderGrowth: 0.3,
-    priceMomentum: 0.3
-  };
-
-  // Time window for scoring (in milliseconds)
-  private static readonly SCORING_WINDOW = 5 * 60 * 1000; // 5 minutes
-
   /**
-   * Calculate a score for a token based on its activity
+   * Calculate fundamentals score for a token
    * @param token The token to score
-   * @returns Promise with the score (0-100)
+   * @returns Object containing all scoring components and total score
    */
-  public static async calculateScore(token: any): Promise<number> {
+  public static async calculateFundamentalsScore(token: any): Promise<{
+    liquidity: number;
+    community: number;
+    volume: number;
+    total: number;
+    grade: 'A' | 'B' | 'C' | 'D' | 'F';
+    confidence: 'Low' | 'Medium' | 'High';
+  }> {
     try {
       // If token is too new, don't score it yet
-      const tokenAge = Date.now() - token.createdAt.getTime();
+      const tokenAge = Date.now() - (token.createdAt?.getTime() || Date.now());
       if (tokenAge < 60000) { // 1 minute
-        return 0;
+        return {
+          liquidity: 0,
+          community: 0,
+          volume: 0,
+          total: 0,
+          grade: 'F',
+          confidence: 'Low'
+        };
       }
 
-      // Normalize metrics (0-1 scale)
-      const volumeScore = this.normalize(
-        token.metrics.volume24h,
-        0,      // min expected volume
-        1000000  // max expected volume ($1M)
-      );
+      // Calculate individual scores (0-100 scale)
+      const liquidityScore = this.scoreLiquidity(token.liquidityAmount || 0);
+      const communityScore = this.scoreCommunity(token.holderCount || 0);
+      const volumeScore = this.scoreVolume(token.currentVolume || 0);
+      const totalScore = liquidityScore + communityScore + volumeScore;
 
-      const holderScore = this.normalize(
-        token.metrics.holders,
-        0,      // min holders
-        1000     // max expected holders in first window
-      );
+      // Determine grade and confidence
+      const grade = this.getGrade(totalScore);
+      const tokenAgeMs = Date.now() - (token.createdAt?.getTime() || Date.now());
+      const confidence = this.getConfidence(totalScore, tokenAgeMs);
 
-      const priceChangeScore = this.normalize(
-        token.metrics.priceChange1h || 0,
-        -0.5,   // can go down 50%
-        10       // or up 1000%
-      );
+      // Update token with score
+      await this.updateTokenScore(token, {
+        liquidity: liquidityScore,
+        community: communityScore,
+        volume: volumeScore,
+        total: totalScore,
+        grade,
+        confidence
+      });
 
-      // Calculate weighted score
-      let score = 0;
-      score += volumeScore * this.WEIGHTS.volume;
-      score += holderScore * this.WEIGHTS.holderGrowth;
-      score += priceChangeScore * this.WEIGHTS.priceMomentum;
+      // Log and potentially alert on high scores
+      if (totalScore >= 80) {
+        logger.info(`High scoring token detected: ${token.name} (${token.symbol}) - Score: ${totalScore} (${grade})`);
+        await this.triggerHighScoreAlert(token, totalScore);
+      }
 
-      // Convert to 0-100 scale
-      score = Math.round(score * 100);
-
-      // Cap at 100
-      return Math.min(100, Math.max(0, score));
+      return {
+        liquidity: liquidityScore,
+        community: communityScore,
+        volume: volumeScore,
+        total: totalScore,
+        grade,
+        confidence
+      };
     } catch (error) {
-      logger.error('Error calculating score:', error);
-      return 0;
+      logger.error('Error calculating fundamentals score:', error);
+      return {
+        liquidity: 0,
+        community: 0,
+        volume: 0,
+        total: 0,
+        grade: 'F',
+        confidence: 'Low'
+      };
     }
   }
 
   /**
-   * Update a token's score and status
+   * Score liquidity (0-40 points)
+   * - >$100K = 40 points
+   * - $50K-100K = 25 points
+   * - <$50K = 10 points
+   * @param liquidity Total liquidity in USD
+   * @returns Score between 0-40
    */
-  public static async updateTokenScore(token: any): Promise<void> {
-    try {
-      const score = await this.calculateScore(token);
-      
-      // Determine status based on score
-      let status = TokenStatus.NEW;
-      if (score >= 80) status = TokenStatus.STRONG;
-      else if (score >= 50) status = TokenStatus.WATCH;
+  private static scoreLiquidity(liquidity: number | undefined | null): number {
+    // Handle missing or invalid values
+    if (typeof liquidity !== 'number' || liquidity < 0 || isNaN(liquidity)) {
+      return 0; // Default to lowest score for invalid data
+    }
+    
+    if (liquidity > 100000) return 40;
+    if (liquidity >= 50000) return 25;
+    return 10;
+  }
 
-      // Update token with new score and status
-      await token.updateScore(score, this.calculateConfidence(token));
-      
-      logger.info(`Updated score for ${token.symbol}: ${score}/100 (${status})`);
-      
-      // If score is high, trigger alerts
-      if (score >= 80) {
-        await this.triggerHighScoreAlert(token, score);
-      }
+  /**
+   * Score community strength (0-30 points)
+   * - >2.5K holders = 30 points
+   * - 1K-2.5K = 15 points
+   * - <1K = 5 points
+   * @param holders Number of token holders
+   * @returns Score between 0-30
+   */
+  private static scoreCommunity(holders: number | undefined | null): number {
+    // Handle missing or invalid values
+    if (typeof holders !== 'number' || holders < 0 || isNaN(holders)) {
+      return 0; // Default to lowest score for invalid data
+    }
+    
+    if (holders > 2500) return 30;
+    if (holders >= 1000) return 15;
+    return 5;
+  }
+
+  /**
+   * Score volume sustainability (0-30 points)
+   * - >$50K daily = 30 points
+   * - $25K-50K = 15 points
+   * - <$25K = 5 points
+   * @param dailyVolume 24h trading volume in USD
+   * @returns Score between 0-30
+   */
+  private static scoreVolume(dailyVolume: number | undefined | null): number {
+    // Handle missing or invalid values
+    if (typeof dailyVolume !== 'number' || dailyVolume < 0 || isNaN(dailyVolume)) {
+      return 0; // Default to lowest score for invalid data
+    }
+    
+    if (dailyVolume > 50000) return 30;
+    if (dailyVolume >= 25000) return 15;
+    return 5;
+  }
+
+  /**
+   * Convert total score to letter grade
+   */
+  private static getGrade(score: number): 'A' | 'B' | 'C' | 'D' | 'F' {
+    if (score >= 80) return 'A';
+    if (score >= 65) return 'B';
+    if (score >= 50) return 'C';
+    if (score >= 30) return 'D';
+    return 'F';
+  }
+
+  /**
+   * Determine confidence level based on score and token age
+   * @param score Total score (0-100)
+   * @param tokenAgeMs Age of token in milliseconds
+   * @returns Confidence level (High/Medium/Low)
+   */
+  private static getConfidence(score: number, tokenAgeMs: number): 'High' | 'Medium' | 'Low' {
+    // Base confidence on score
+    let baseConfidence: 'High' | 'Medium' | 'Low';
+    if (score >= 70) baseConfidence = 'High';
+    else if (score >= 40) baseConfidence = 'Medium';
+    else return 'Low';
+
+    // Adjust for token age
+    const tokenAgeHours = tokenAgeMs / (1000 * 60 * 60);
+    
+    // Tokens under 1 hour old = Low confidence
+    if (tokenAgeHours < 1) return 'Low';
+    
+    // Tokens under 12 hours = Max Medium confidence
+    if (tokenAgeHours < 12 && baseConfidence === 'High') {
+      return 'Medium';
+    }
+    
+    return baseConfidence;
+  }
+
+  /**
+   * Update token with score in the database
+   */
+  private static async updateTokenScore(
+    token: any,
+    scoreData: {
+      liquidity: number;
+      community: number;
+      volume: number;
+      total: number;
+      grade: 'A' | 'B' | 'C' | 'D' | 'F';
+      confidence: 'Low' | 'Medium' | 'High';
+    }
+  ): Promise<void> {
+    try {
+      await Token.findByIdAndUpdate(token._id, {
+        $set: {
+          'fundamentalsScore.liquidity': scoreData.liquidity,
+          'fundamentalsScore.community': scoreData.community,
+          'fundamentalsScore.volume': scoreData.volume,
+          'fundamentalsScore.total': scoreData.total,
+          'fundamentalsScore.grade': scoreData.grade,
+          'fundamentalsScore.confidence': scoreData.confidence,
+          'fundamentalsScore.lastUpdated': new Date(),
+          lastUpdated: new Date()
+        }
+      });
     } catch (error) {
       logger.error('Error updating token score:', error);
     }

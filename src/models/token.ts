@@ -1,5 +1,6 @@
 // @ts-nocheck
-import mongoose, { Document, Model } from 'mongoose';
+import mongoose, { Document, Model, Types } from 'mongoose';
+import Transaction, { ITransaction } from './transaction';
 
 const tokenSchema = new mongoose.Schema({
   // Core Identifiers
@@ -32,6 +33,26 @@ const tokenSchema = new mongoose.Schema({
   currentVolume: { type: Number, default: 0 },
   holderCount: { type: Number, default: 0 },
   liquidityAmount: { type: Number, default: 0 },
+  totalSupply: { type: Number, default: 0 },  // Total token supply
+  circulatingSupply: { type: Number, default: 0 },  // Circulating supply
+  marketCap: { type: Number, default: 0 },  // Market cap from Pump.fun
+  marketCapTier: { 
+    type: String, 
+    enum: ['TINY', 'MICRO', 'SMALL', 'MEDIUM', 'LARGE', 'MEGA'], 
+    default: 'TINY' 
+  },  // Market cap tier
+  lastMarketCapUpdate: { type: Date },  // When market cap was last updated
+  
+  // Fundamentals Scoring
+  fundamentalsScore: {
+    liquidity: { type: Number, min: 0, max: 40, default: 0 },
+    community: { type: Number, min: 0, max: 30, default: 0 },
+    volume: { type: Number, min: 0, max: 30, default: 0 },
+    total: { type: Number, min: 0, max: 100, default: 0 },
+    grade: { type: String, enum: ['A', 'B', 'C', 'D', 'F'], default: 'F' },
+    confidence: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Low' },
+    lastUpdated: { type: Date, default: Date.now }
+  },
   holderDistribution: [{
     address: { type: String, required: true },
     balance: { type: Number, required: true },
@@ -82,6 +103,92 @@ const tokenSchema = new mongoose.Schema({
 tokenSchema.virtual('isNearGraduation').get(function() {
   return this.potentialScore >= 80 && !this.isGraduated;
 });
+
+// Transaction-related methods
+tokenSchema.methods.getTransactionsSince = async function(hours: number): Promise<ITransaction[]> {
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+  return Transaction.find({
+    tokenAddress: this.mintAddress,
+    timestamp: { $gte: since }
+  }).sort({ timestamp: -1 });
+};
+
+tokenSchema.methods.calculateRealTimeHolders = async function(): Promise<number> {
+  const result = await Transaction.aggregate([
+    {
+      $match: {
+        tokenAddress: this.mintAddress.toLowerCase()
+      }
+    },
+    {
+      $group: {
+        _id: '$to',
+        balance: {
+          $sum: {
+            $cond: [
+              { $eq: ['$to', '$_id'] },
+              '$amount',
+              { $subtract: [
+                { $cond: [{ $eq: ['$from', '$_id'] }, '$amount', 0] },
+                { $cond: [{ $eq: ['$to', '$_id'] }, '$amount', 0] }
+              ]}
+            ]
+          }
+        }
+      }
+    },
+    {
+      $match: {
+        balance: { $gt: 0 }
+      }
+    },
+    {
+      $count: 'holderCount'
+    }
+  ]);
+
+  return result[0]?.holderCount || 0;
+};
+
+tokenSchema.methods.calculateBuyPressure24h = async function(): Promise<{
+  buyVolume: number;
+  sellVolume: number;
+  buyPressure: number; // Ratio of buy volume to total volume (0-1)
+  buyCount: number;
+  sellCount: number;
+}> {
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  
+  const result = await Transaction.aggregate([
+    {
+      $match: {
+        tokenAddress: this.mintAddress.toLowerCase(),
+        timestamp: { $gte: oneDayAgo },
+        type: { $in: ['BUY', 'SELL'] }
+      }
+    },
+    {
+      $group: {
+        _id: '$type',
+        totalVolume: { $sum: '$usdValue' },
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+
+  const buyData = result.find(r => r._id === 'BUY') || { totalVolume: 0, count: 0 };
+  const sellData = result.find(r => r._id === 'SELL') || { totalVolume: 0, count: 0 };
+  
+  const totalVolume = buyData.totalVolume + sellData.totalVolume;
+  
+  return {
+    buyVolume: buyData.totalVolume,
+    sellVolume: sellData.totalVolume,
+    buyPressure: totalVolume > 0 ? buyData.totalVolume / totalVolume : 0,
+    buyCount: buyData.count,
+    sellCount: sellData.count
+  };
+};
 
 // Add methods
 tokenSchema.methods.updateTimeSeriesData = async function(type, value) {
@@ -205,6 +312,16 @@ interface IConcentrationRisk {
   updatedAt?: Date;
 }
 
+interface IFundamentalsScore {
+  liquidity: number;
+  community: number;
+  volume: number;
+  total: number;
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  confidence: 'Low' | 'Medium' | 'High';
+  lastUpdated: Date;
+}
+
 interface ITokenDocument extends Document {
   mintAddress: string;
   name: string;
@@ -241,6 +358,7 @@ interface ITokenDocument extends Document {
   metrics?: {
     currentVolume?: number;
     volumeGrowthRate?: number;
+    fundamentalsScore: IFundamentalsScore;
     [key: string]: any;
   };
   

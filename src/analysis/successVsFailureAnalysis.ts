@@ -1,11 +1,18 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
-import { Token } from '../models/token';
+import Token from '../models/token';
 import logger from '../utils/logger';
 
 // Configuration
-const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
-const HELIUS_API_KEY = 'YOUR_HELIUS_API_KEY'; // TODO: Move to .env
+// Load environment variables
+require('dotenv').config();
+
+const RPC_ENDPOINT = process.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
+
+if (!HELIUS_API_KEY) {
+  throw new Error('HELIUS_API_KEY environment variable is not set');
+}
 
 interface TokenAnalysis {
   address: string;
@@ -136,17 +143,183 @@ function compareTokenMetrics(
   return {};
 }
 
-/**
- * Generates a human-readable report of the findings
- */
+interface TokenMomentumMetrics {
+  token: TokenAnalysis;
+  momentumScore: number;
+  buyerQuality: number;
+  liquidityHealth: number;
+  growthPattern: number;
+  manipulationRisk: number;
+  totalScore: number;
+}
+
+function calculateMomentumMetrics(token: TokenAnalysis): TokenMomentumMetrics {
+  // Calculate momentum score (0-40 scale)
+  const momentumScore = Math.min(40, Math.floor(
+    (token.buyerBehavior.walletAges.reduce((a, b) => a + b, 0) / token.buyerBehavior.walletAges.length) * 0.4 +
+    (token.buyerBehavior.holdTimes.reduce((a, b) => a + b, 0) / token.buyerBehavior.holdTimes.length) * 0.3 +
+    (token.buyerBehavior.buySellRatios.reduce((a, b) => a + b, 0) / token.buyerBehavior.buySellRatios.length) * 0.3
+  ) * 10);
+
+  // Calculate buyer quality (0-20 scale)
+  const buyerQuality = Math.min(20, Math.floor(
+    (token.buyerBehavior.walletAges.reduce((a, b) => a + b, 0) / token.buyerBehavior.walletAges.length) * 0.5 +
+    (new Set(token.buyerBehavior.walletAges).size / token.buyerBehavior.walletAges.length) * 0.5
+  ) * 10);
+
+  // Calculate liquidity health (0-20 scale)
+  const liquidityHealth = Math.min(20, Math.floor(
+    (token.liquidity.lockPercentage / 100) * 0.6 +
+    (token.liquidity.lockDuration ? 1 : 0) * 0.4
+  ) * 20);
+
+  // Calculate growth pattern (0-10 scale)
+  const growthPattern = Math.min(10, Math.floor(
+    (token.dayOneVolume / token.currentMarketCap) * 100 * 0.7 +
+    (token.firstHourBuyers / 100) * 0.3
+  ));
+
+  // Calculate manipulation risk (0-10 scale, lower is better)
+  const manipulationRisk = 10 - Math.min(10, Math.floor(
+    (token.buyerBehavior.buySellRatios.filter(r => r > 5).length / token.buyerBehavior.buySellRatios.length) * 10
+  ));
+
+  return {
+    token,
+    momentumScore,
+    buyerQuality,
+    liquidityHealth,
+    growthPattern,
+    manipulationRisk,
+    totalScore: momentumScore + buyerQuality + liquidityHealth + growthPattern + manipulationRisk
+  };
+}
+
 function generateReport(
   successToken: TokenAnalysis,
   failedTokens: TokenAnalysis[],
   differences: Record<string, any>
 ): void {
-  // TODO: Implement report generation
-  console.log('=== MEMECOIN ANALYZER REPORT ===');
-  console.log('Analysis complete. Implement report generation.');
+  // Calculate metrics for all tokens
+  const successMetrics = calculateMomentumMetrics(successToken);
+  const failedMetricsList = failedTokens.map(token => calculateMomentumMetrics(token));
+
+  // Calculate average failed metrics
+  const avgFailedMetrics = {
+    momentumScore: failedMetricsList.reduce((sum, m) => sum + m.momentumScore, 0) / failedMetricsList.length,
+    buyerQuality: failedMetricsList.reduce((sum, m) => sum + m.buyerQuality, 0) / failedMetricsList.length,
+    liquidityHealth: failedMetricsList.reduce((sum, m) => sum + m.liquidityHealth, 0) / failedMetricsList.length,
+    growthPattern: failedMetricsList.reduce((sum, m) => sum + m.growthPattern, 0) / failedMetricsList.length,
+    manipulationRisk: failedMetricsList.reduce((sum, m) => sum + m.manipulationRisk, 0) / failedMetricsList.length,
+    totalScore: failedMetricsList.reduce((sum, m) => sum + m.totalScore, 0) / failedMetricsList.length
+  };
+
+  // Core Report
+  console.log('\n=== 🎯 MOMENTUM HYPOTHESIS TEST ===');
+  
+  // Success Token Analysis
+  console.log('\n🏆 SUCCESS TOKEN');
+  console.log(`Name: ${successToken.name}`);
+  console.log(`Market Cap: $${(successToken.currentMarketCap / 1e6).toFixed(2)}M`);
+  console.log(`First Hour Buyers: ${successToken.firstHourBuyers}`);
+  console.log(`Day 1 Volume: $${(successToken.dayOneVolume / 1e6).toFixed(2)}M`);
+  
+  // Metrics Comparison
+  console.log('\n📊 METRICS COMPARISON');
+  console.log('='.repeat(70));
+  console.log('METRIC'.padEnd(20) + 'SUCCESS'.padStart(12) + 'AVG FAILED'.padStart(15) + 'DIFF'.padStart(15));
+  console.log('='.repeat(70));
+  
+  const formatMetric = (val: number, decimals: number = 1) => val.toFixed(decimals).padStart(6);
+  
+  console.log('Momentum Score:'.padEnd(20) + 
+    formatMetric(successMetrics.momentumScore) + 
+    formatMetric(avgFailedMetrics.momentumScore) + 
+    formatMetric(successMetrics.momentumScore - avgFailedMetrics.momentumScore));
+    
+  console.log('Buyer Quality:'.padEnd(20) + 
+    formatMetric(successMetrics.buyerQuality) + 
+    formatMetric(avgFailedMetrics.buyerQuality) + 
+    formatMetric(successMetrics.buyerQuality - avgFailedMetrics.buyerQuality, 1));
+    
+  console.log('Liquidity Health:'.padEnd(20) + 
+    formatMetric(successMetrics.liquidityHealth) + 
+    formatMetric(avgFailedMetrics.liquidityHealth) + 
+    formatMetric(successMetrics.liquidityHealth - avgFailedMetrics.liquidityHealth, 1));
+    
+  console.log('Growth Pattern:'.padEnd(20) + 
+    formatMetric(successMetrics.growthPattern) + 
+    formatMetric(avgFailedMetrics.growthPattern) + 
+    formatMetric(successMetrics.growthPattern - avgFailedMetrics.growthPattern, 1));
+    
+  console.log('Manipulation Risk:'.padEnd(20) + 
+    formatMetric(successMetrics.manipulationRisk) + 
+    formatMetric(avgFailedMetrics.manipulationRisk) + 
+    formatMetric(successMetrics.manipulationRisk - avgFailedMetrics.manipulationRisk, 1));
+  
+  console.log('='.repeat(70));
+  console.log('TOTAL SCORE:'.padEnd(20) + 
+    formatMetric(successMetrics.totalScore) + 
+    formatMetric(avgFailedMetrics.totalScore) + 
+    formatMetric(successMetrics.totalScore - avgFailedMetrics.totalScore));
+  
+  // Key Insights
+  console.log('\n🔍 KEY INSIGHTS');
+  
+  // Buyer Analysis
+  if (successMetrics.buyerQuality > avgFailedMetrics.buyerQuality + 5) {
+    console.log('✅ Stronger buyer base with experienced holders');
+  } else {
+    console.log('⚠️  Buyer quality similar to failed tokens');
+  }
+  
+  // Liquidity Analysis
+  if (successMetrics.liquidityHealth > avgFailedMetrics.liquidityHealth + 5) {
+    console.log('✅ Better liquidity management and locking');
+  } else {
+    console.log('⚠️  Liquidity health needs improvement');
+  }
+  
+  // Growth Analysis
+  if (successMetrics.growthPattern > avgFailedMetrics.growthPattern + 2) {
+    console.log('✅ Healthier growth pattern');
+  } else {
+    console.log('⚠️  Growth pattern similar to failed tokens');
+  }
+  
+  // Manipulation Analysis
+  if (successMetrics.manipulationRisk > avgFailedMetrics.manipulationRisk + 2) {
+    console.log('✅ Lower manipulation risk detected');
+  } else {
+    console.log('⚠️  Manipulation risk on par with failed tokens');
+  }
+  
+  // Final Verdict
+  console.log('\n🎯 FINAL VERDICT');
+  const successThreshold = 70; // Out of 100
+  
+  if (successMetrics.totalScore >= successThreshold) {
+    console.log(`✅ STRONG BUY SIGNAL (${successMetrics.totalScore.toFixed(1)}/100)`);
+    console.log('This token shows strong fundamentals that differentiate it from failed tokens.');
+  } else if (successMetrics.totalScore >= successThreshold - 15) {
+    console.log(`⚠️  CAUTIOUS OPTIMISM (${successMetrics.totalScore.toFixed(1)}/100)`);
+    console.log('Some positive signals, but monitor closely.');
+  } else {
+    console.log(`❌ HIGH RISK (${successMetrics.totalScore.toFixed(1)}/100)`);
+    console.log('Patterns similar to failed tokens. Proceed with caution.');
+  }
+  
+  // Actionable Recommendations
+  console.log('\n💡 RECOMMENDATIONS');
+  if (successMetrics.buyerQuality < 15) {
+    console.log('- Investigate buyer patterns - potential wash trading');
+  }
+  if (successMetrics.liquidityHealth < 15) {
+    console.log('- Verify liquidity locks and team token distribution');
+  }
+  if (successMetrics.manipulationRisk < 6) {
+    console.log('- High manipulation risk detected - set tight stop losses');
+  }
 }
 
 export { findTheRealDifference };

@@ -1,6 +1,8 @@
-import express, { Express, Request, Response, NextFunction } from 'express';
+import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
+import type { Request, Response, NextFunction, RequestHandler } from '../types/express';
+import type { CorsOptions } from '../types/cors';
 import { config } from './config/config';
 import apiRoutes from './routes/apiRoutes';
 
@@ -15,15 +17,55 @@ class App {
   }
 
   private initializeMiddlewares(): void {
-    // Enable CORS
-    this.app.use(cors());
+    // Enable CORS with specific origins and headers
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      // Add production domains here
+    ];
+
+    const corsOptions: CorsOptions = {
+      origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) === -1) {
+          const msg = `The CORS policy for this site does not allow access from the specified origin: ${origin}`;
+          console.warn(msg);
+          return callback(new Error(msg), false);
+        }
+        return callback(null, true);
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    };
     
-    // Parse JSON bodies
-    this.app.use(express.json());
+    this.app.use(cors(corsOptions));
+    
+    // Parse JSON bodies with size limit
+    this.app.use(express.json({ limit: '10mb' }));
+    this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+    
+    // Health check endpoint
+    this.app.get('/api/health', (req: Request, res: Response) => {
+      res.status(200).json({
+        status: 'connected',
+        timestamp: Date.now(),
+        version: process.env.npm_package_version || '1.0.0',
+        environment: process.env.NODE_ENV || 'development'
+      });
+    });
     
     // Logging middleware
     this.app.use((req: Request, res: Response, next: NextFunction) => {
-      console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+      const start = Date.now();
+      
+      res.on('finish', () => {
+        const duration = Date.now() - start;
+        console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)`);
+      });
+      
       next();
     });
   }

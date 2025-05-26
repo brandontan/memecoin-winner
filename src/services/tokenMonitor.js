@@ -1,6 +1,6 @@
 const { Connection, PublicKey } = require('@solana/web3.js');
-const Token = require('../models/token');
-const Transaction = require('../models/transaction');
+const Token = require('../models/token.js');
+const Transaction = require('../models/transaction.js');
 const { calculateEnhancedScore } = require('../utils/enhancedScoring');
 const logger = require('../utils/logger');
 const config = require('../config');
